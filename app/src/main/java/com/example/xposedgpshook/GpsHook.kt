@@ -25,7 +25,8 @@ class GpsHook : IXposedHookLoadPackage {
         "com.autonavi.minimap",         // 高德地图
         "com.tencent.map",              // 腾讯地图
         "com.tencent.qqminimap",        // 腾讯地图（轻量版）
-        "com.sougou.map.android.maps"   // 搜狗地图
+        "com.sougou.map.android.maps",  // 搜狗地图
+        "com.google.android.gms"        // Google Play Services (融合定位服务)
     )
 
     override fun handleLoadPackage(lpparam: LoadPackageParam) {
@@ -45,6 +46,12 @@ class GpsHook : IXposedHookLoadPackage {
         hookLocationManager(lpparam.classLoader)
         hookWifiManager(lpparam.classLoader)
         hookTelephonyManager(lpparam.classLoader)
+        hookLocationManagerService(lpparam.classLoader)
+
+        // Hook Google Play Services 融合定位
+        if (lpparam.packageName == "com.google.android.gms") {
+            hookFusedLocationProvider(lpparam.classLoader)
+        }
     }
 
     /**
@@ -199,7 +206,8 @@ class GpsHook : IXposedHookLoadPackage {
                 XposedBridge.log("GpsHook: getCurrentLocation not found (requires Android 11+)")
             }
 
-            // 5. Hook Location 类的 getLatitude 和 getLongitude 方法
+            /*
+            // 5. Hook Location 类的 getLatitude 和 getLongitude 方法 (REMOVED due to instability)
             try {
                 val locationClass = XposedHelpers.findClass("android.location.Location", classLoader)
 
@@ -234,6 +242,7 @@ class GpsHook : IXposedHookLoadPackage {
                 XposedBridge.log("GpsHook: Failed to hook Location class methods")
                 XposedBridge.log(e)
             }
+            */
 
             XposedBridge.log("GpsHook: Successfully hooked LocationManager.")
 
@@ -335,6 +344,102 @@ class GpsHook : IXposedHookLoadPackage {
     }
 
     /**
+     * Hook 系统的 LocationManagerService (系统定位服务核心)
+     */
+    private fun hookLocationManagerService(classLoader: ClassLoader) {
+        try {
+            // Hook LocationManagerService 类
+            val locationManagerServiceClass = XposedHelpers.findClass(
+                "com.android.server.LocationManagerService",
+                classLoader
+            )
+
+            // Hook getLastLocation 方法
+            try {
+                XposedHelpers.findAndHookMethod(
+                    locationManagerServiceClass,
+                    "getLastLocation",
+                    String::class.java,
+                    String::class.java,
+                    String::class.java,
+                    object : XC_MethodHook() {
+                        override fun afterHookedMethod(param: MethodHookParam) {
+                            val fakeLocation = createFakeLocationSimple()
+                            param.result = fakeLocation
+                            XposedBridge.log("GpsHook: LocationManagerService.getLastLocation hooked")
+                        }
+                    }
+                )
+            } catch (e: Throwable) {
+                XposedBridge.log("GpsHook: Failed to hook getLastLocation in LocationManagerService")
+                XposedBridge.log(e)
+            }
+
+            // Hook requestLocationUpdates
+            try {
+                XposedHelpers.findAndHookMethod(
+                    locationManagerServiceClass,
+                    "requestLocationUpdates",
+                    android.location.LocationRequest::class.java,
+                    android.location.LocationListener::class.java,
+                    android.app.PendingIntent::class.java,
+                    String::class.java,
+                    object : XC_MethodHook() {
+                        override fun beforeHookedMethod(param: MethodHookParam) {
+                            XposedBridge.log("GpsHook: LocationManagerService.requestLocationUpdates intercepted")
+                        }
+                    }
+                )
+            } catch (e: Throwable) {
+                XposedBridge.log("GpsHook: Failed to hook requestLocationUpdates in LocationManagerService")
+            }
+
+            XposedBridge.log("GpsHook: Successfully hooked LocationManagerService")
+        } catch (e: Throwable) {
+            XposedBridge.log("GpsHook: Failed to find LocationManagerService class")
+            XposedBridge.log(e)
+        }
+    }
+
+    /**
+     * 创建简单的虚假位置（用于系统服务）
+     */
+    private fun createFakeLocationSimple(): Location {
+        val coords = getUserSettings(null)
+
+        val location = Location(LocationManager.GPS_PROVIDER)
+        location.latitude = coords.first
+        location.longitude = coords.second
+        location.accuracy = 10.0f
+        location.altitude = 50.0
+        location.bearing = 0f
+        location.speed = 0f
+        location.time = System.currentTimeMillis()
+        location.elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+        return location
+    }
+
+    /**
+     * 创建一个虚假的 Location 对象
+     */
+    private fun createFakeLocation(locationManager: LocationManager): Location {
+        val context = getContextFromLocationManager(locationManager)
+        val coords = getUserSettings(context)
+
+        val location = Location(LocationManager.GPS_PROVIDER)
+        location.latitude = coords.first
+        location.longitude = coords.second
+        location.accuracy = 10.0f // 精度（米）
+        location.altitude = 50.0 // 海拔（米）
+        location.bearing = 0f // 方向
+        location.speed = 0f // 速度（米/秒）
+        location.time = System.currentTimeMillis()
+        // for API 17+
+        location.elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+        return location
+    }
+
+    /**
      * 从 TelephonyManager 获取 Context
      */
     private fun getContextFromTelephonyManager(telephonyManager: android.telephony.TelephonyManager): Context? {
@@ -366,34 +471,63 @@ class GpsHook : IXposedHookLoadPackage {
     }
 
     /**
-     * 获取用户设置的坐标
+     * 获取用户设置的坐标 - 通过 ContentProvider 跨进程读取
      */
     private fun getUserSettings(context: Context?): Pair<Double, Double> {
         return try {
-            if (context != null) {
-                // 直接读取配置应用的 SharedPreferences 文件
-                val prefsPath = "/data/data/com.example.xposedgpshook/shared_prefs/gps_hook_prefs.xml"
-                val prefsFile = java.io.File(prefsPath)
+            // 尝试通过 ContentProvider 读取配置
+            val uri = android.net.Uri.parse("content://com.example.xposedgpshook.provider/location")
 
-                if (prefsFile.exists() && prefsFile.canRead()) {
-                    // 解析 XML 文件读取配置
-                    val content = prefsFile.readText()
-                    val latitude = extractFloatValue(content, "fake_latitude") ?: defaultLatitude.toFloat()
-                    val longitude = extractFloatValue(content, "fake_longitude") ?: defaultLongitude.toFloat()
+            XposedBridge.log("GpsHook: Attempting to read config via ContentProvider: $uri")
 
-                    XposedBridge.log("GpsHook: Using custom location: $latitude, $longitude")
-                    Pair(latitude.toDouble(), longitude.toDouble())
-                } else {
-                    XposedBridge.log("GpsHook: Config file not found or not readable, using default location")
-                    Pair(defaultLatitude, defaultLongitude)
-                }
-            } else {
-                XposedBridge.log("GpsHook: Context is null, using default location")
-                Pair(defaultLatitude, defaultLongitude)
+            // 如果没有 Context，使用默认值
+            if (context == null) {
+                XposedBridge.log("GpsHook: No context available, using default location")
+                return Pair(defaultLatitude, defaultLongitude)
             }
+
+            val cursor = context.contentResolver.query(
+                uri,
+                null,
+                null,
+                null,
+                null
+            )
+
+            cursor?.use {
+                if (it.moveToFirst()) {
+                    val latitudeIndex = it.getColumnIndex("latitude")
+                    val longitudeIndex = it.getColumnIndex("longitude")
+                    val enabledIndex = it.getColumnIndex("enabled")
+
+                    if (latitudeIndex >= 0 && longitudeIndex >= 0 && enabledIndex >= 0) {
+                        val latitude = it.getDouble(latitudeIndex)
+                        val longitude = it.getDouble(longitudeIndex)
+                        val enabled = it.getInt(enabledIndex) == 1
+
+                        if (!enabled) {
+                            XposedBridge.log("GpsHook: Hook is disabled by user")
+                            // 如果禁用了，也返回默认值（或者可以返回真实位置）
+                        }
+
+                        XposedBridge.log("GpsHook: Successfully read location via ContentProvider: Latitude=$latitude, Longitude=$longitude, Enabled=$enabled")
+                        return Pair(latitude, longitude)
+                    } else {
+                        XposedBridge.log("GpsHook: Invalid column indices in cursor")
+                    }
+                } else {
+                    XposedBridge.log("GpsHook: Cursor is empty")
+                }
+            }
+
+            XposedBridge.log("GpsHook: Failed to read from ContentProvider, using default location")
+            Pair(defaultLatitude, defaultLongitude)
+
         } catch (e: Throwable) {
-            XposedBridge.log("GpsHook: Failed to read settings, using default location")
+            XposedBridge.log("GpsHook: Exception reading from ContentProvider: ${e.message}")
+            XposedBridge.log("GpsHook: Exception type: ${e.javaClass.name}")
             XposedBridge.log(e)
+            XposedBridge.log("GpsHook: Falling back to default location")
             Pair(defaultLatitude, defaultLongitude)
         }
     }
@@ -458,8 +592,6 @@ class GpsHook : IXposedHookLoadPackage {
         val fakeCellInfos = mutableListOf<Any>()
         val random = Random()
         val numCells = 2 + random.nextInt(2) // 2-3 个基站
-
-        val (baseLatitude, baseLongitude) = getUserSettings(context)
 
         for (i in 1..numCells) {
             try {
@@ -537,22 +669,275 @@ class GpsHook : IXposedHookLoadPackage {
     }
 
     /**
-     * 创建一个虚假的 Location 对象
+     * Hook Google Play Services 的 FusedLocationProvider
+     * 这是现代 Android 应用最常用的定位服务
      */
-    private fun createFakeLocation(locationManager: LocationManager): Location {
-        val context = getContextFromLocationManager(locationManager)
-        val coords = getUserSettings(context)
+    private fun hookFusedLocationProvider(classLoader: ClassLoader) {
+        XposedBridge.log("GpsHook: Starting to hook Google Play Services FusedLocationProvider APIs...")
 
-        val location = Location(LocationManager.GPS_PROVIDER)
-        location.latitude = coords.first
-        location.longitude = coords.second
-        location.accuracy = 10.0f // 精度（米）
-        location.altitude = 50.0 // 海拔（米）
-        location.bearing = 0f // 方向
-        location.speed = 0f // 速度（米/秒）
-        location.time = System.currentTimeMillis()
-        // for API 17+
-        location.elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
-        return location
+        // Hook FusedLocationProviderClient (现代 API)
+        hookFusedLocationProviderClient(classLoader)
+
+        // Hook FusedLocationProviderApi (旧版 API)
+        hookFusedLocationProviderApi(classLoader)
+
+        // Hook LocationServices
+        hookLocationServices(classLoader)
+
+        // Hook zzd (内部实现类)
+        hookInternalLocationClasses(classLoader)
+    }
+
+    /**
+     * Hook FusedLocationProviderClient (Google Play Services 最新 API)
+     */
+    private fun hookFusedLocationProviderClient(classLoader: ClassLoader) {
+        try {
+            // 1. Hook FusedLocationProviderClient
+            val fusedClientClass = XposedHelpers.findClass(
+                "com.google.android.gms.location.FusedLocationProviderClient",
+                classLoader
+            )
+
+            // Hook getLastLocation() -> Task<Location>
+            try {
+                XposedHelpers.findAndHookMethod(
+                    fusedClientClass,
+                    "getLastLocation",
+                    object : XC_MethodHook() {
+                        override fun afterHookedMethod(param: MethodHookParam) {
+                            XposedBridge.log("GpsHook: FusedLocationProviderClient.getLastLocation() intercepted")
+                            try {
+                                // 创建一个成功的 Task，返回虚假位置
+                                val taskClass = XposedHelpers.findClass("com.google.android.gms.tasks.Tasks", classLoader)
+                                val fakeLocation = createFakeLocationSimple()
+                                param.result = XposedHelpers.callStaticMethod(taskClass, "forResult", fakeLocation)
+                            } catch (e: Throwable) {
+                                XposedBridge.log("GpsHook: Failed to create fake Task for getLastLocation")
+                                XposedBridge.log(e)
+                            }
+                        }
+                    }
+                )
+                XposedBridge.log("GpsHook: Hooked FusedLocationProviderClient.getLastLocation()")
+            } catch (e: Throwable) {
+                XposedBridge.log("GpsHook: Failed to hook getLastLocation: ${e.message}")
+            }
+
+            // Hook getCurrentLocation(int priority, CancellationToken) -> Task<Location>
+            try {
+                XposedHelpers.findAndHookMethod(
+                    fusedClientClass,
+                    "getCurrentLocation",
+                    Int::class.javaPrimitiveType,
+                    XposedHelpers.findClass("com.google.android.gms.tasks.CancellationToken", classLoader),
+                    object : XC_MethodHook() {
+                        override fun afterHookedMethod(param: MethodHookParam) {
+                            XposedBridge.log("GpsHook: FusedLocationProviderClient.getCurrentLocation() intercepted")
+                            try {
+                                val taskClass = XposedHelpers.findClass("com.google.android.gms.tasks.Tasks", classLoader)
+                                val fakeLocation = createFakeLocationSimple()
+                                param.result = XposedHelpers.callStaticMethod(taskClass, "forResult", fakeLocation)
+                            } catch (e: Throwable) {
+                                XposedBridge.log("GpsHook: Failed to create fake Task for getCurrentLocation")
+                                XposedBridge.log(e)
+                            }
+                        }
+                    }
+                )
+                XposedBridge.log("GpsHook: Hooked FusedLocationProviderClient.getCurrentLocation()")
+            } catch (e: Throwable) {
+                XposedBridge.log("GpsHook: Failed to hook getCurrentLocation: ${e.message}")
+            }
+
+            // Hook requestLocationUpdates(LocationRequest, LocationCallback, Looper)
+            try {
+                val locationCallbackClass = XposedHelpers.findClass(
+                    "com.google.android.gms.location.LocationCallback",
+                    classLoader
+                )
+
+                XposedHelpers.findAndHookMethod(
+                    fusedClientClass,
+                    "requestLocationUpdates",
+                    XposedHelpers.findClass("com.google.android.gms.location.LocationRequest", classLoader),
+                    locationCallbackClass,
+                    android.os.Looper::class.java,
+                    object : XC_MethodHook() {
+                        override fun beforeHookedMethod(param: MethodHookParam) {
+                            XposedBridge.log("GpsHook: FusedLocationProviderClient.requestLocationUpdates() intercepted")
+
+                            // 替换 LocationCallback 为我们的代理
+                            val originalCallback = param.args[1]
+                            if (originalCallback != null) {
+                                val hookedCallback = createHookedLocationCallback(originalCallback, classLoader)
+                                param.args[1] = hookedCallback
+                            }
+                        }
+                    }
+                )
+                XposedBridge.log("GpsHook: Hooked FusedLocationProviderClient.requestLocationUpdates()")
+            } catch (e: Throwable) {
+                XposedBridge.log("GpsHook: Failed to hook requestLocationUpdates: ${e.message}")
+            }
+
+            // Hook requestLocationUpdates(LocationRequest, PendingIntent)
+            try {
+                XposedHelpers.findAndHookMethod(
+                    fusedClientClass,
+                    "requestLocationUpdates",
+                    XposedHelpers.findClass("com.google.android.gms.location.LocationRequest", classLoader),
+                    android.app.PendingIntent::class.java,
+                    object : XC_MethodHook() {
+                        override fun beforeHookedMethod(param: MethodHookParam) {
+                            XposedBridge.log("GpsHook: FusedLocationProviderClient.requestLocationUpdates(PendingIntent) intercepted")
+                        }
+                    }
+                )
+            } catch (e: Throwable) {
+                XposedBridge.log("GpsHook: Failed to hook requestLocationUpdates with PendingIntent")
+            }
+
+            XposedBridge.log("GpsHook: Successfully hooked FusedLocationProviderClient")
+        } catch (e: Throwable) {
+            XposedBridge.log("GpsHook: Failed to hook FusedLocationProviderClient: ${e.message}")
+            XposedBridge.log(e)
+        }
+    }
+
+    /**
+     * 创建一个被 Hook 的 LocationCallback 代理
+     */
+    private fun createHookedLocationCallback(originalCallback: Any, classLoader: ClassLoader): Any {
+        return try {
+            val locationCallbackClass = XposedHelpers.findClass(
+                "com.google.android.gms.location.LocationCallback",
+                classLoader
+            )
+
+            val locationResultClass = XposedHelpers.findClass(
+                "com.google.android.gms.location.LocationResult",
+                classLoader
+            )
+
+            // 创建代理对象
+            java.lang.reflect.Proxy.newProxyInstance(
+                classLoader,
+                arrayOf(locationCallbackClass),
+                java.lang.reflect.InvocationHandler { _, method, args ->
+                    when (method.name) {
+                        "onLocationResult" -> {
+                            XposedBridge.log("GpsHook: LocationCallback.onLocationResult intercepted")
+                            if (args != null && args.isNotEmpty()) {
+                                // 创建虚假的 LocationResult
+                                val fakeLocation = createFakeLocationSimple()
+                                val fakeResult = createFakeLocationResult(fakeLocation, locationResultClass)
+                                // 调用原始回调，但传入虚假位置
+                                method.invoke(originalCallback, fakeResult)
+                            }
+                            null
+                        }
+                        "onLocationAvailability" -> {
+                            XposedBridge.log("GpsHook: LocationCallback.onLocationAvailability intercepted")
+                            if (args != null && args.isNotEmpty()) {
+                                method.invoke(originalCallback, *args)
+                            }
+                            null
+                        }
+                        else -> {
+                            if (args != null) {
+                                method.invoke(originalCallback, *args)
+                            } else {
+                                method.invoke(originalCallback)
+                            }
+                        }
+                    }
+                }
+            )
+        } catch (e: Throwable) {
+            XposedBridge.log("GpsHook: Failed to create hooked LocationCallback, returning original")
+            XposedBridge.log(e)
+            originalCallback
+        }
+    }
+
+    /**
+     * 创建虚假的 LocationResult
+     */
+    private fun createFakeLocationResult(fakeLocation: Location, locationResultClass: Class<*>): Any {
+        return try {
+            // LocationResult 包含一个 Location 列表
+            val locations = listOf(fakeLocation)
+            val constructor = locationResultClass.getConstructor(List::class.java)
+            constructor.newInstance(locations)
+        } catch (e: Throwable) {
+            XposedBridge.log("GpsHook: Failed to create LocationResult")
+            XposedBridge.log(e)
+            throw e
+        }
+    }
+
+    /**
+     * Hook FusedLocationProviderApi (旧版 Google Play Services API)
+     */
+    private fun hookFusedLocationProviderApi(classLoader: ClassLoader) {
+        try {
+            val fusedApiClass = XposedHelpers.findClass(
+                "com.google.android.gms.location.FusedLocationProviderApi",
+                classLoader
+            )
+
+            XposedBridge.log("GpsHook: Found FusedLocationProviderApi, attempting to hook...")
+        } catch (e: Throwable) {
+            XposedBridge.log("GpsHook: FusedLocationProviderApi not found or failed to hook")
+        }
+    }
+
+    /**
+     * Hook LocationServices
+     */
+    private fun hookLocationServices(classLoader: ClassLoader) {
+        try {
+            val locationServicesClass = XposedHelpers.findClass(
+                "com.google.android.gms.location.LocationServices",
+                classLoader
+            )
+
+            XposedBridge.log("GpsHook: Found LocationServices class")
+
+            // LocationServices 主要是提供 FusedLocationProviderClient 的入口
+            // 我们已经 Hook 了 FusedLocationProviderClient，所以这里不需要额外操作
+        } catch (e: Throwable) {
+            XposedBridge.log("GpsHook: LocationServices not found")
+        }
+    }
+
+    /**
+     * Hook Google Play Services 内部实现类
+     */
+    private fun hookInternalLocationClasses(classLoader: ClassLoader) {
+        try {
+            // Hook zzd 类 (Google Play Services 的混淆内部类)
+            // 注意：这些类名可能随 GMS 版本变化而变化
+            XposedBridge.log("GpsHook: Attempting to hook internal GMS location classes...")
+
+            // 尝试 Hook 可能的内部实现类
+            val possibleClasses = listOf(
+                "com.google.android.gms.location.internal.FusedLocationProviderImpl",
+                "com.google.android.gms.location.zzd",
+                "com.google.android.gms.location.zzz"
+            )
+
+            for (className in possibleClasses) {
+                try {
+                    val clazz = XposedHelpers.findClass(className, classLoader)
+                    XposedBridge.log("GpsHook: Found internal class: $className")
+                } catch (e: Throwable) {
+                    // 类不存在，继续尝试其他类
+                }
+            }
+        } catch (e: Throwable) {
+            XposedBridge.log("GpsHook: Failed to hook internal location classes")
+        }
     }
 }

@@ -215,15 +215,15 @@ class MainActivity : AppCompatActivity() {
                 apply()
             }
 
-            // 修改 SharedPreferences 文件权限，使其可被其他应用读取
-            makeWorldReadable()
+            // 通知 ContentProvider 数据已更新（通过发送广播或其他方式）
+            // ContentProvider 会在被查询时自动读取最新的 SharedPreferences 数据
 
             // 如果开关已启用，清空基站缓存
             if (switchEnableHook.isChecked) {
                 clearCellLocationCache()
             }
 
-            Toast.makeText(this, "保存成功！请重启目标应用使其生效", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "保存成功！配置已通过 ContentProvider 共享\n请重启目标应用使其生效", Toast.LENGTH_LONG).show()
 
         } catch (e: NumberFormatException) {
             Toast.makeText(this, "请输入有效的数字", Toast.LENGTH_SHORT).show()
@@ -241,9 +241,6 @@ class MainActivity : AppCompatActivity() {
             apply()
         }
 
-        // 修改文件权限
-        makeWorldReadable()
-
         // 如果开关已启用，清空基站缓存
         if (switchEnableHook.isChecked) {
             clearCellLocationCache()
@@ -253,26 +250,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * 修改 SharedPreferences 文件权限，使其可被其他应用读取
+     * 修改 SharedPreferences 文件权限（已废弃 - 现在使用 ContentProvider）
+     * 保留此方法仅用于向后兼容
      */
+    @Deprecated("不再需要，已改用 ContentProvider")
     private fun makeWorldReadable() {
-        try {
-            val prefsDir = File(applicationInfo.dataDir, "shared_prefs")
-            val prefsFile = File(prefsDir, "$PREFS_NAME.xml")
-
-            if (prefsFile.exists()) {
-                // 设置文件权限为 644 (rw-r--r--)
-                prefsFile.setReadable(true, false)
-                prefsFile.setWritable(true, true)
-            }
-
-            // 同时设置目录权限
-            if (prefsDir.exists()) {
-                prefsDir.setReadable(true, false)
-                prefsDir.setExecutable(true, false)
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
+        // 使用 ContentProvider 后，不再需要手动设置文件权限
+        // ContentProvider 会自动处理跨进程访问
+        android.util.Log.d("GpsHook", "Using ContentProvider, no need to set file permissions")
     }
 }

@@ -22,6 +22,13 @@
             </intent-filter>
         </activity>
 
+        <!-- ContentProvider 用于跨进程共享位置数据 -->
+        <provider
+            android:name=".LocationProvider"
+            android:authorities="com.example.xposedgpshook.provider"
+            android:exported="true"
+            android:grantUriPermissions="true" />
+
         <!-- 声明这是一个 Xposed 模块 -->
         <meta-data
             android:name="xposedmodule"
