@@ -34,6 +34,10 @@
             android:name="xposedmodule"
             android:value="true" />
 
+        <meta-data
+            android:name="xposedscope"
+            android:resource="@array/xposed_scope" />
+
         <!-- 模块的描述 -->
         <meta-data
             android:name="xposeddescription"

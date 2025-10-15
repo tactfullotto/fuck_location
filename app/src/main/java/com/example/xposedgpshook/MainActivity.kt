@@ -23,8 +23,8 @@ class MainActivity : AppCompatActivity() {
         const val KEY_LATITUDE = "fake_latitude"
         const val KEY_LONGITUDE = "fake_longitude"
         const val KEY_HOOK_ENABLED = "hook_enabled"
-        const val DEFAULT_LATITUDE = 39.916345 // 北京故宫
-        const val DEFAULT_LONGITUDE = 116.397155
+        const val DEFAULT_LATITUDE = 39.916345 // zhongnanhai
+        const val DEFAULT_LONGITUDE = 116.383597
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -245,13 +245,10 @@ class MainActivity : AppCompatActivity() {
             clearCellLocationCache()
         }
 
-        Toast.makeText(this, "已恢复默认位置（北京故宫）", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "已恢复默认位置（zhongnanhai）", Toast.LENGTH_SHORT).show()
     }
 
-    /**
-     * 修改 SharedPreferences 文件权限（已废弃 - 现在使用 ContentProvider）
-     * 保留此方法仅用于向后兼容
-     */
+
     @Deprecated("不再需要，已改用 ContentProvider")
     private fun makeWorldReadable() {
         // 使用 ContentProvider 后，不再需要手动设置文件权限

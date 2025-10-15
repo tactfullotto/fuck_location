@@ -1,1 +1,21 @@
-<resources></resources>
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="xposed_scope" translatable="false">
+        <!-- 谷歌地图 -->
+        <item>com.google.android.apps.maps</item>
+        <!-- 百度地图 -->
+        <item>com.baidu.BaiduMap</item>
+        <!-- 高德地图 -->
+        <item>com.autonavi.minimap</item>
+        <!-- 腾讯地图 -->
+        <item>com.tencent.map</item>
+        <!-- 腾讯地图（轻量版） -->
+        <item>com.tencent.qqminimap</item>
+        <!-- 搜狗地图 -->
+        <item>com.sougou.map.android.maps</item>
+        <!-- Google Play Services (融合定位服务) -->
+        <item>com.google.android.gms</item>
+        <!-- 系统服务 (部分系统应用可能需要) -->
+        <item>android</item>
+    </string-array>
+</resources>

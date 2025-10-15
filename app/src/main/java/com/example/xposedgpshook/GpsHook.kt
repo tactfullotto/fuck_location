@@ -15,9 +15,9 @@ import java.util.Random
 
 class GpsHook : IXposedHookLoadPackage {
 
-    // 默认位置 (北京故宫)
-    private val defaultLatitude = 39.916345
-    private val defaultLongitude = 116.397155
+    // 默认位置 (zhongnanhai, beijing)
+    private val defaultLatitude = 39.9120899
+    private val defaultLongitude = 116.383597
 
     private val targetPackages = setOf(
         "com.google.android.apps.maps", // 谷歌地图
@@ -26,7 +26,8 @@ class GpsHook : IXposedHookLoadPackage {
         "com.tencent.map",              // 腾讯地图
         "com.tencent.qqminimap",        // 腾讯地图（轻量版）
         "com.sougou.map.android.maps",  // 搜狗地图
-        "com.google.android.gms"        // Google Play Services (融合定位服务)
+        "com.google.android.gms",        // Google Play Services (融合定位服务)
+        "android"                        // 系统进程 (部分系统服务可能运行在此包名下)
     )
 
     override fun handleLoadPackage(lpparam: LoadPackageParam) {

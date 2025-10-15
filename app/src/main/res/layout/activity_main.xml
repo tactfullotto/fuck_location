@@ -97,7 +97,7 @@
         android:id="@+id/btn_reset"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="恢复默认（北京故宫）"
+        android:text="恢复默认（中南海）"
         android:textSize="16sp"
         android:padding="16dp"
         style="?attr/materialButtonOutlinedStyle" />
@@ -105,7 +105,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="常用位置示例：\n• 北京故宫：39.916345, 116.397155\n• 上海东方明珠：31.239663, 121.499809\n• 广州塔：23.108677, 113.319494"
+        android:text="常用位置示例：\n• 中南海：39.9120899,116.383597\n• 上海：31.239663, 121.499809\n• 广州：23.108677, 113.319494"
         android:textSize="12sp"
         android:textColor="#999999"
         android:layout_marginTop="24dp"
