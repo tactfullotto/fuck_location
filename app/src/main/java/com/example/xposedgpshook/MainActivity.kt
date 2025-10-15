@@ -156,7 +156,6 @@ class MainActivity : AppCompatActivity() {
 
                 // 停止并清空定位相关服务
                 os.writeBytes("pm clear com.android.phone\n")
-                os.writeBytes("pm clear com.google.android.gms\n")
 
                 // 重启无线电和定位服务（更彻底）
                 os.writeBytes("setprop ctl.restart radio\n")
