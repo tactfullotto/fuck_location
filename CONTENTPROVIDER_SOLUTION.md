@@ -41,7 +41,7 @@ class LocationProvider : ContentProvider() {
     // Authority: com.example.xposedgpshook.provider
     // URI: content://com.example.xposedgpshook.provider/location
     
-    override fun query(...): Cursor? {
+    override fun query(): Cursor? {
         // 从 SharedPreferences 读取配置
         // 返回经纬度和启用状态
         val cursor = MatrixCursor(arrayOf("latitude", "longitude", "enabled"))

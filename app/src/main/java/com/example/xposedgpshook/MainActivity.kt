@@ -1,14 +1,16 @@
 package com.example.xposedgpshook
 
+import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
 import android.widget.Switch
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.example.xposedgpshook.ui.LocationsActivity
 import java.io.DataOutputStream
-import java.io.File
 
 class MainActivity : AppCompatActivity() {
 
@@ -16,9 +18,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var etLongitude: EditText
     private lateinit var btnSave: Button
     private lateinit var btnReset: Button
+    private lateinit var btnManageLocations: Button
     private lateinit var switchEnableHook: Switch
 
     companion object {
+        const val REQUEST_CODE_LOCATION = 1001
         const val PREFS_NAME = "gps_hook_prefs"
         const val KEY_LATITUDE = "fake_latitude"
         const val KEY_LONGITUDE = "fake_longitude"
@@ -70,6 +74,7 @@ class MainActivity : AppCompatActivity() {
         etLongitude = findViewById(R.id.et_longitude)
         btnSave = findViewById(R.id.btn_save)
         btnReset = findViewById(R.id.btn_reset)
+        btnManageLocations = findViewById(R.id.btn_manage_locations)
         switchEnableHook = findViewById(R.id.switch_enable_hook)
     }
 
@@ -91,6 +96,10 @@ class MainActivity : AppCompatActivity() {
 
         btnReset.setOnClickListener {
             resetToDefault()
+        }
+
+        btnManageLocations.setOnClickListener {
+            openManageLocationsActivity()
         }
 
         switchEnableHook.setOnCheckedChangeListener { _, isChecked ->
@@ -246,6 +255,43 @@ class MainActivity : AppCompatActivity() {
         }
 
         Toast.makeText(this, "已恢复默认位置（zhongnanhai）", Toast.LENGTH_SHORT).show()
+    }
+
+    /**
+     * 打开位置管理页面
+     */
+    private fun openManageLocationsActivity() {
+        val intent = Intent(this, LocationsActivity::class.java)
+        val latStr = etLatitude.text.toString().trim()
+        val lngStr = etLongitude.text.toString().trim()
+        val latitude = latStr.toDoubleOrNull()
+        val longitude = lngStr.toDoubleOrNull()
+
+        if (latitude != null && longitude != null) {
+            intent.putExtra("current_latitude", latitude)
+            intent.putExtra("current_longitude", longitude)
+        }
+        startActivityForResult(intent, REQUEST_CODE_LOCATION)
+    }
+
+    /**
+     * 处理从位置管理页面返回的结果
+     */
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+
+        if (requestCode == REQUEST_CODE_LOCATION && resultCode == Activity.RESULT_OK) {
+            data?.let {
+                val latitude = it.getDoubleExtra("latitude", DEFAULT_LATITUDE)
+                val longitude = it.getDoubleExtra("longitude", DEFAULT_LONGITUDE)
+
+                etLatitude.setText(latitude.toString())
+                etLongitude.setText(longitude.toString())
+
+                Toast.makeText(this, "已选择位置：$latitude, $longitude", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
 

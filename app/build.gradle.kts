@@ -45,4 +45,5 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     compileOnly("de.robv.android.xposed:api:82")
+    implementation("com.google.code.gson:gson:2.10.1")
 }

@@ -48,6 +48,9 @@
             android:name="xposedminversion"
             android:value="52" />
 
+        <activity
+            android:name=".ui.LocationsActivity"
+            android:exported="false" />
     </application>
 
 </manifest>

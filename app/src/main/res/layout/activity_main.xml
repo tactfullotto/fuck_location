@@ -100,6 +100,16 @@
         android:text="恢复默认（中南海）"
         android:textSize="16sp"
         android:padding="16dp"
+        android:layout_marginBottom="12dp"
+        style="?attr/materialButtonOutlinedStyle" />
+
+    <Button
+        android:id="@+id/btn_manage_locations"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="管理保存的位置"
+        android:textSize="16sp"
+        android:padding="16dp"
         style="?attr/materialButtonOutlinedStyle" />
 
     <TextView

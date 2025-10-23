@@ -1,3 +1,13 @@
 <resources>
     <string name="app_name">xposedgpshook</string>
+    <string name="location_name">位置名称</string>
+    <string name="location_coords">Lat: 39.9, Lng: 116.3</string>
+    <string name="delete">删除</string>
+    <string name="edit">编辑</string>
+    <string name="edit_location">编辑位置</string>
+    <string name="location_name_hint">请输入位置名称</string>
+    <string name="latitude_hint">纬度</string>
+    <string name="longitude_hint">经度</string>
+    <string name="cancel">取消</string>
+    <string name="save">保存</string>
 </resources>
