@@ -269,6 +269,38 @@ class GpsHook : IXposedHookLoadPackage {
                 }
             )
 
+            // Hook WifiInfo to prevent getting real connection details
+            try {
+                val wifiInfoClass = XposedHelpers.findClass("android.net.wifi.WifiInfo", classLoader)
+
+                // 伪造 IP 地址
+                XposedHelpers.findAndHookMethod(wifiInfoClass, "getIpAddress", object : XC_MethodHook() {
+                    override fun afterHookedMethod(param: MethodHookParam) {
+                        param.result = 0 // 返回 0.0.0.0
+                        XposedBridge.log("GpsHook: Faked WifiInfo getIpAddress.")
+                    }
+                })
+
+                // 伪造 SSID
+                XposedHelpers.findAndHookMethod(wifiInfoClass, "getSSID", object : XC_MethodHook() {
+                    override fun afterHookedMethod(param: MethodHookParam) {
+                        param.result = "FakeConnectedSSID"
+                        XposedBridge.log("GpsHook: Faked WifiInfo getSSID.")
+                    }
+                })
+
+                // 伪造 BSSID
+                XposedHelpers.findAndHookMethod(wifiInfoClass, "getBSSID", object : XC_MethodHook() {
+                    override fun afterHookedMethod(param: MethodHookParam) {
+                        param.result = "02:00:00:00:00:00"
+                        XposedBridge.log("GpsHook: Faked WifiInfo getBSSID.")
+                    }
+                })
+            } catch (e: Throwable) {
+                XposedBridge.log("GpsHook: Failed to hook WifiInfo methods.")
+                XposedBridge.log(e)
+            }
+
             XposedBridge.log("GpsHook: Successfully hooked WifiManager.")
         } catch (e: Throwable) {
             XposedBridge.log("GpsHook: Failed to hook WifiManager.")
@@ -304,6 +336,31 @@ class GpsHook : IXposedHookLoadPackage {
                     }
                 }
             )
+
+            // Hook other sensitive info to return null or empty
+            val methodsToHook = listOf(
+                "getSubscriberId", "getDeviceId", "getLine1Number", "getSimSerialNumber",
+                "getSimOperator", "getSimOperatorName", "getNetworkOperator", "getNetworkOperatorName"
+            )
+            for (methodName in methodsToHook) {
+                try {
+                    XposedHelpers.findAndHookMethod(
+                        telephonyManagerClass,
+                        methodName,
+                        object : XC_MethodHook() {
+                            override fun afterHookedMethod(param: MethodHookParam) {
+                                param.result = null
+                                XposedBridge.log("GpsHook: Faked $methodName to null.")
+                            }
+                        }
+                    )
+                } catch (e: NoSuchMethodError) {
+                    // Some methods might not exist on all API levels, ignore.
+                } catch (e: Throwable) {
+                    XposedBridge.log("GpsHook: Failed to hook $methodName")
+                    XposedBridge.log(e)
+                }
+            }
 
             // Hook getNeighboringCellInfo (旧版 API，百度地图可能使用)
             try {
